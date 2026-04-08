@@ -1,0 +1,68 @@
+#  Licensed to the Apache Software Foundation (ASF) under one
+#  or more contributor license agreements.  See the NOTICE file
+#  distributed with this work for additional information
+#  regarding copyright ownership.  The ASF licenses this file
+#  to you under the Apache License, Version 2.0 (the
+#  "License"); you may not use this file except in compliance
+#  with the License.  You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+
+ARG JAVA_VERSION=${JAVA_VERSION:-17}
+FROM eclipse-temurin:${JAVA_VERSION}-jdk-jammy
+
+RUN apt-get update && apt-get install -y less curl python3 nano wget awscli --no-install-recommends \
+	&& rm -rf /var/lib/apt/lists/*
+
+RUN ln -s /usr/bin/python3 /usr/bin/python
+
+ARG PRESTO_VERSION
+RUN if [ -z "${PRESTO_VERSION}" ]; then \
+        echo "Error: PRESTO_VERSION build argument is required"; \
+        exit 1; \
+    fi && \
+    echo "Building Presto Docker image with version: ${PRESTO_VERSION}"
+
+ENV PRESTO_VERSION=${PRESTO_VERSION} \
+    PRESTO_HOME=/opt/presto-server
+
+COPY jars/presto/ /tmp/presto-jars-in/
+RUN set -eux; \
+    tar -xzf "/tmp/presto-jars-in/presto-server-${PRESTO_VERSION}.tar.gz" -C /opt/; \
+    ln -snf "/opt/presto-server-${PRESTO_VERSION}" "${PRESTO_HOME}"; \
+    mkdir -p "${PRESTO_HOME}/etc" "${PRESTO_HOME}/etc/catalog"; \
+    rm -f "${PRESTO_HOME}/plugin/hive"/hudi-*.jar 2>/dev/null || true; \
+    if ls /tmp/presto-jars-in/hudi-presto-bundle-*.jar 1>/dev/null 2>&1; then \
+        cp /tmp/presto-jars-in/hudi-presto-bundle-*.jar "${PRESTO_HOME}/plugin/hive/"; \
+        echo "Copied hudi-presto-bundle into plugin/hive"; \
+    else \
+        echo "No hudi-presto-bundle-*.jar in jars/presto (optional)"; \
+    fi; \
+    if [ -d /tmp/presto-jars-in/plugin-hive ]; then \
+        find /tmp/presto-jars-in/plugin-hive -maxdepth 1 -name '*.jar' -exec cp {} "${PRESTO_HOME}/plugin/hive/" \; ; \
+        echo "Merged jars/presto/plugin-hive/*.jar into plugin/hive"; \
+    fi; \
+    rm -rf /tmp/presto-jars-in
+
+RUN wget -q https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_prometheus_javaagent/0.16.1/jmx_prometheus_javaagent-0.16.1.jar \
+	&& chmod +x jmx_prometheus_javaagent-0.16.1.jar \
+	&& mv jmx_prometheus_javaagent-0.16.1.jar /opt/jmx_prometheus_javaagent-0.16.1.jar
+
+COPY conf/presto/catalog/config.yaml /opt/presto-jmx-config.yaml
+COPY conf/presto/catalog/jvm.config ${PRESTO_HOME}/etc/jvm.config
+COPY conf/presto/catalog/config.properties ${PRESTO_HOME}/etc/config.properties
+COPY conf/presto/catalog/node.properties ${PRESTO_HOME}/etc/node.properties
+COPY conf/presto/catalog/hive.properties ${PRESTO_HOME}/etc/catalog/hive.properties
+COPY conf/presto/catalog/memory.properties ${PRESTO_HOME}/etc/catalog/memory.properties
+COPY conf/presto/catalog/mysql.properties ${PRESTO_HOME}/etc/catalog/mysql.properties
+COPY conf/presto/catalog/tpcds.properties ${PRESTO_HOME}/etc/catalog/tpcds.properties
+
+COPY conf/presto/catalog/autoconfig_and_launch.sh /opt/autoconfig_and_launch_presto.sh
+RUN chmod a+x /opt/autoconfig_and_launch_presto.sh
+CMD ["/opt/autoconfig_and_launch_presto.sh"]

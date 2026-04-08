@@ -25,6 +25,9 @@ export HIVE_VERSION_TAG=${HIVE_VERSION}
 export TRINO_VERSION=${TRINO_VERSION:-449}
 export TRINO_VERSION_TAG=${TRINO_VERSION}
 export TRINO_JAVA_VERSION=${TRINO_JAVA_VERSION:-22}
+export PRESTO_VERSION=${PRESTO_VERSION:-0.287}
+export PRESTO_VERSION_TAG=${PRESTO_VERSION}
+export PRESTO_JAVA_VERSION=${PRESTO_JAVA_VERSION:-17}
 export JAVA_VERSION=${JAVA_VERSION:-11}
 export SCALA_VERSION=${SCALA_VERSION:-2.12}
 export HADOOP_VERSION=${HADOOP_VERSION:-3.3.4}
@@ -64,3 +67,12 @@ docker build \
     -t "$DOCKER_HUB_USERNAME"/trino:latest \
     -t "$DOCKER_HUB_USERNAME"/trino:"$TRINO_VERSION_TAG" \
     -f "$SCRIPT_DIR"/dockerfiles/Dockerfile.trino .
+
+echo "Building Presto Docker image using Presto version: $PRESTO_VERSION"
+
+docker build \
+    --build-arg JAVA_VERSION="$PRESTO_JAVA_VERSION" \
+    --build-arg PRESTO_VERSION="$PRESTO_VERSION" \
+    -t "$DOCKER_HUB_USERNAME"/presto:latest \
+    -t "$DOCKER_HUB_USERNAME"/presto:"$PRESTO_VERSION_TAG" \
+    -f "$SCRIPT_DIR"/dockerfiles/Dockerfile.presto .
