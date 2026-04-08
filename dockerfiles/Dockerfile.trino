@@ -58,7 +58,6 @@ COPY conf/trino/catalog/tpcds.properties /opt/trino-server/etc/catalog/tpcds.pro
 COPY conf/trino/catalog/memory.properties /opt/trino-server/etc/catalog/memory.properties
 COPY conf/trino/catalog/hudi.properties /opt/trino-server/etc/catalog/hudi.properties
 COPY conf/trino/catalog/hive.properties /opt/trino-server/etc/catalog/hive.properties
-COPY conf/trino/catalog/mysql.properties /opt/trino-server/etc/catalog/mysql.properties
 
 COPY conf/trino/catalog/autoconfig_and_launch.sh /opt/autoconfig_and_launch.sh
 RUN chmod a+x /opt/autoconfig_and_launch.sh
