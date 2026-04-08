@@ -1,0 +1,4 @@
+# JMX Prometheus Java agent rules (see https://github.com/prometheus/jmx_exporter)
+lowercaseOutputName: true
+rules:
+  - pattern: ".*"
