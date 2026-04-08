@@ -34,19 +34,24 @@ ENV PRESTO_VERSION=${PRESTO_VERSION} \
 
 COPY jars/presto/ /tmp/presto-jars-in/
 RUN set -eux; \
-    tar -xzf "/tmp/presto-jars-in/presto-server-${PRESTO_VERSION}.tar.gz" -C /opt/; \
+    tar -xzf "/tmp/presto-jars-in/presto-server-${PRESTO_VERSION}.tar" -C /opt/; \
     ln -snf "/opt/presto-server-${PRESTO_VERSION}" "${PRESTO_HOME}"; \
     mkdir -p "${PRESTO_HOME}/etc" "${PRESTO_HOME}/etc/catalog"; \
-    rm -f "${PRESTO_HOME}/plugin/hive"/hudi-*.jar 2>/dev/null || true; \
+    if [ -d "${PRESTO_HOME}/plugin/hive-hadoop2" ]; then \
+        HIVE_PLUGIN_DIR="${PRESTO_HOME}/plugin/hive-hadoop2"; \
+    else \
+        HIVE_PLUGIN_DIR="${PRESTO_HOME}/plugin/hive"; \
+    fi; \
+    rm -f "${HIVE_PLUGIN_DIR}"/hudi-*.jar 2>/dev/null || true; \
     if ls /tmp/presto-jars-in/hudi-presto-bundle-*.jar 1>/dev/null 2>&1; then \
-        cp /tmp/presto-jars-in/hudi-presto-bundle-*.jar "${PRESTO_HOME}/plugin/hive/"; \
-        echo "Copied hudi-presto-bundle into plugin/hive"; \
+        cp /tmp/presto-jars-in/hudi-presto-bundle-*.jar "${HIVE_PLUGIN_DIR}/"; \
+        echo "Copied hudi-presto-bundle into ${HIVE_PLUGIN_DIR}"; \
     else \
         echo "No hudi-presto-bundle-*.jar in jars/presto (optional)"; \
     fi; \
     if [ -d /tmp/presto-jars-in/plugin-hive ]; then \
-        find /tmp/presto-jars-in/plugin-hive -maxdepth 1 -name '*.jar' -exec cp {} "${PRESTO_HOME}/plugin/hive/" \; ; \
-        echo "Merged jars/presto/plugin-hive/*.jar into plugin/hive"; \
+        find /tmp/presto-jars-in/plugin-hive -maxdepth 1 -name '*.jar' -exec cp {} "${HIVE_PLUGIN_DIR}/" \; ; \
+        echo "Merged jars/presto/plugin-hive/*.jar into ${HIVE_PLUGIN_DIR}"; \
     fi; \
     rm -rf /tmp/presto-jars-in
 
