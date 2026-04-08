@@ -18,7 +18,7 @@ ENV TRINO_VERSION=${TRINO_VERSION} \
 
 COPY jars/trino/trino-server-${TRINO_VERSION}.tar /opt/trino-server-${TRINO_VERSION}.tar
 RUN tar -xf /opt/trino-server-${TRINO_VERSION}.tar -C /opt/ \
-	&& ln -s /opt/trino-server-${TRINO_VERSION} ${TRINO_HOME} \
+	&& mv /opt/trino-server-${TRINO_VERSION} ${TRINO_HOME} \
 	&& rm /opt/trino-server-${TRINO_VERSION}.tar \
 	&& mkdir -p $TRINO_HOME/etc \
 	&& mkdir -p $TRINO_HOME/etc/catalog
@@ -41,14 +41,14 @@ COPY conf/trino/catalog/hudi.properties /opt/trino-server/etc/catalog/hudi.prope
 COPY conf/trino/catalog/hive.properties /opt/trino-server/etc/catalog/hive.properties
 COPY conf/trino/catalog/mysql.properties /opt/trino-server/etc/catalog/mysql.properties
 
-# Match Presto image: strip stock Hudi JARs from plugin dirs (keep plugin/hudi folder); then optionally copy jars/trino bundle
+# Replace only hudi-trino-bundle*.jar — do not remove all JARs under plugin/hudi (trino-hudi-*.jar provides io.trino.spi.Plugin).
 RUN if [ -d /opt/trino-server/plugin/hudi ]; then \
-        echo "Removing stock JARs under plugin/hudi only (keep folder)"; \
-        find /opt/trino-server/plugin/hudi -maxdepth 1 -type f -name '*.jar' -delete; \
+        echo "Removing stock hudi-trino-bundle*.jar from plugin/hudi only (keep trino-hudi-*.jar, hdfs/, etc.)"; \
+        find /opt/trino-server/plugin/hudi -maxdepth 1 -type f -name 'hudi-trino-bundle*.jar' -delete; \
     fi; \
     if [ -d /opt/trino-server/plugin/hive ]; then \
-        echo "Removing stock Hudi JARs from plugin/hive (hudi*.jar at plugin root)"; \
-        find /opt/trino-server/plugin/hive -maxdepth 1 -type f -name 'hudi*.jar' -delete; \
+        echo "Removing stock hudi-trino-bundle*.jar from plugin/hive before optional custom bundle"; \
+        find /opt/trino-server/plugin/hive -maxdepth 1 -type f -name 'hudi-trino-bundle*.jar' -delete; \
     fi
 
 COPY jars/trino/ /tmp/jars-copy/
