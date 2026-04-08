@@ -23,9 +23,9 @@ RUN tar -xf /opt/trino-server-${TRINO_VERSION}.tar -C /opt/ \
 	&& mkdir -p $TRINO_HOME/etc \
 	&& mkdir -p $TRINO_HOME/etc/catalog
 
-COPY jars/trino/trino-cli-${TRINO_VERSION}-executable.jar /opt/
-RUN mv /opt/trino-cli-${TRINO_VERSION}-executable.jar trino-cli \
-	&& chmod +x trino-cli
+COPY jars/trino/trino-cli-${TRINO_VERSION}-executable.jar /usr/local/bin/trino-cli
+RUN chmod +x /usr/local/bin/trino-cli \
+	&& ln -sf /usr/local/bin/trino-cli /usr/local/bin/trino
 
 RUN wget https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_prometheus_javaagent/0.16.1/jmx_prometheus_javaagent-0.16.1.jar \
 	&& chmod +x jmx_prometheus_javaagent-0.16.1.jar \

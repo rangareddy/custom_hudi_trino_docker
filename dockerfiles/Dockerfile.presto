@@ -39,10 +39,9 @@ RUN set -eux; \
     fi; \
     rm -rf /tmp/presto-jars-in
 
-# Presto CLI (same pattern as Trino: executable JAR on PATH-like location in the image)
-COPY jars/presto/presto-cli-${PRESTO_VERSION}-executable.jar /opt/
-RUN mv "/opt/presto-cli-${PRESTO_VERSION}-executable.jar" /presto-cli \
-	&& chmod +x /presto-cli
+COPY jars/presto/presto-cli-${PRESTO_VERSION}-executable.jar /usr/local/bin/presto-cli
+RUN chmod +x /usr/local/bin/presto-cli \
+	&& ln -sf /usr/local/bin/presto-cli /usr/local/bin/presto
 
 RUN wget -q https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_prometheus_javaagent/0.16.1/jmx_prometheus_javaagent-0.16.1.jar \
 	&& chmod +x jmx_prometheus_javaagent-0.16.1.jar \
