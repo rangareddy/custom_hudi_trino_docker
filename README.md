@@ -1,75 +1,175 @@
-# Custom Trino Docker image (Hudi)
+<!--
+  Licensed to the Apache Software Foundation (ASF) under one or more
+  contributor license agreements.  See the NOTICE file distributed with
+  this work for additional information regarding copyright ownership.
+  The ASF licenses this file to You under the Apache License, Version 2.0
+  (the "License"); you may not use this file except in compliance with
+  the License.  You may obtain a copy of the License at
 
-This repository builds a Docker image around [Trino](https://trino.io/) with optional replacement of the bundled Apache Hudi plugin JARs, plus catalog configs for Hive, Hudi, MySQL, memory, and TPC-DS.
+       http://www.apache.org/licenses/LICENSE-2.0
 
-## Layout
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+
+# Spark, Hudi, Trino, Hive Metastore, and MinIO (Docker Compose)
+
+This repository builds three custom images—**Spark + Hudi + Jupyter**, **Hive Metastore**, and **Trino**—and runs them with **MinIO** (S3-compatible storage) via Docker Compose. Use it to develop and test Hudi tables on object storage and query them from Trino through the Hive Metastore.
+
+## What runs in Compose
+
+| Service | Image (default tag prefix) | Role |
+|--------|----------------------------|------|
+| `spark-hudi` | `$DOCKER_HUB_USERNAME/spark-hudi:latest` | Spark master/worker, History Server, Jupyter Notebook; Hudi Spark bundle; configs under `conf/spark/` |
+| `hive-metastore` | `$DOCKER_HUB_USERNAME/hive:latest` | Hive Metastore (Thrift); `conf/hive/metastore-site.xml` baked into the image |
+| `minio` | `minio/minio:latest` | S3 API and console; data under `./data/minio` |
+| `mc` | `minio/mc:latest` | One-shot bucket setup: creates `warehouse` and sets a public policy (depends on healthy MinIO) |
+| `trino` | `$DOCKER_HUB_USERNAME/trino:latest` | Trino coordinator; Hudi and Hive catalogs pointing at Metastore and MinIO (`conf/trino/catalog/`) |
+
+Default image namespace: `DOCKER_HUB_USERNAME=apachehuditrino` (override when building or running Compose).
+
+## Repository layout
 
 | Path | Purpose |
 |------|---------|
-| `Dockerfile` | Image definition (Temurin JDK, Trino server, JMX Prometheus agent, configs) |
-| `build.sh` | Validates required artifacts and runs `docker build` |
-| `conf/trino/catalog/` | Static Trino `etc` and catalog property files baked into the image |
-| `jars/` | **You supply** Trino distribution artifacts (and optional Hudi bundle) here |
+| `docker-compose.yml` | Service definitions, ports, networks, MinIO credentials |
+| `build.sh` | Builds Spark, Hive, and Trino images in order (`-f dockerfiles/Dockerfile.*`, context = repo root) |
+| `run_spark_trino_hudi.sh` | `start` \| `stop` \| `restart` the stack (uses `docker compose` or `docker-compose`) |
+| `dockerfiles/Dockerfile.spark` | Spark image: Hudi bundle, AWS SDK jars, notebooks, `entrypoint.sh` |
+| `dockerfiles/Dockerfile.hive` | Hive Metastore image (`linux/amd64` in `build.sh`) |
+| `dockerfiles/Dockerfile.trino` | Trino image: server tarball, CLI, optional `hudi-trino-bundle`, JMX Prometheus agent |
+| `entrypoint.sh` | Spark container: master, worker, history server, Jupyter on port 8888 |
+| `requirements.txt` | Python deps for the Spark image (includes `trino`, `boto3`, `jupyter`, etc.) |
+| `conf/spark/` | `spark-defaults.conf`, `hudi-defaults.conf` |
+| `conf/hive/metastore-site.xml` | Metastore configuration |
+| `conf/trino/catalog/` | Trino `etc` and catalog files (`hive.properties`, `hudi.properties`, `jvm.config`, …) |
+| `notebooks/` | Copied into the Spark image; example `hudi_trino_example.ipynb` and `utils.py` |
+| `jars/` | **Local-only** build inputs (ignored by Git—see `.gitignore`) |
 
 ## Prerequisites
 
-- Docker
-- Trino **server** tarball and **CLI** executable JAR for the version you want (same version string for both filenames)
+- Docker with Compose (`docker compose` or `docker-compose`)
+- JARs and archives placed under `jars/` before `./build.sh` (see below)
 
-### Populate `jars/`
+### `jars/` layout for `build.sh`
 
-Place these files in `jars/` before building (replace `481-SNAPSHOT` with your `TRINO_VERSION`):
+**Spark / Hudi** (`dockerfiles/Dockerfile.spark`):
 
-- `trino-server-<TRINO_VERSION>.tar.gz` — official or custom-built server package
-- `trino-cli-<TRINO_VERSION>-executable.jar` — CLI jar from the same release
+- `jars/hudi/hudi-spark<SPARK_MINOR>-bundle_<SCALA>-<HUDI_VERSION>.jar`  
+  Example defaults from `build.sh`: Spark `3.4.4` → minor `3.4`, Scala `2.12`, Hudi `0.14.2-SNAPSHOT` →  
+  `jars/hudi/hudi-spark3.4-bundle_2.12-0.14.2-SNAPSHOT.jar`
 
-Optional:
+**Trino** (`dockerfiles/Dockerfile.trino`):
 
-- `hudi-trino-bundle-*.jar` — if present, default Hudi-related JARs under the Trino `hudi` and `hive` plugins are removed and this bundle is copied into both plugin directories (see the `Dockerfile` for the exact pattern).
+- `jars/trino/trino-server-<TRINO_VERSION>.tar` (extractable tarball; **not** `.tar.gz` in the current Dockerfile)
+- `jars/trino/trino-cli-<TRINO_VERSION>-executable.jar`
+- Optional: `jars/trino/hudi-trino-bundle-*.jar` — if present, default Hudi JARs in Trino’s `hudi` and `hive` plugins are replaced
 
-Large binaries under `jars/` are ignored by Git (see `.gitignore`); only `jars/.gitkeep` is tracked so the directory exists in a fresh clone.
+Default `TRINO_VERSION` in `build.sh` is `449`. Default Trino JDK build arg is `TRINO_JAVA_VERSION=22` (`JAVA_VERSION` passed as `--build-arg` to `dockerfiles/Dockerfile.trino`).
 
-## Build
+Build context for every image is the **repository root** (`.`); paths like `conf/` and `jars/` in the Dockerfiles are relative to that root.
 
-From the repository root:
+## Build images
 
-```bash
-chmod +x build.sh
+From the repo root:
+
+```sh
+chmod +x build.sh run_spark_trino_hudi.sh
 ./build.sh
 ```
 
-Environment variables (all optional except you must match filenames to `TRINO_VERSION`):
+Useful environment variables (all optional; defaults are set inside `build.sh`):
 
-| Variable | Default | Meaning |
-|----------|---------|---------|
-| `TRINO_VERSION` | `481-SNAPSHOT` | Must match the Trino tarball and CLI jar names under `jars/` |
-| `IMAGE_NAME` | `custom-trino-hudi` | Docker image name |
-| `IMAGE_TAG` | same as `TRINO_VERSION` | Docker image tag |
-
-Example:
-
-```bash
-TRINO_VERSION=470 IMAGE_NAME=my-trino ./build.sh
-```
-
-Equivalent manual build:
-
-```bash
-docker build --build-arg TRINO_VERSION=470 -t my-trino:470 -f Dockerfile .
-```
-
-## Run
-
-The container entrypoint runs `conf/trino/catalog/autoconfig_and_launch.sh`, which starts Trino with `/opt/trino-server/bin/launcher run`. Expose port **8080** (HTTP) and, if you use the bundled JMX Prometheus agent as configured in `jvm.config`, **9091** for metrics.
+| Variable | Role |
+|----------|------|
+| `DOCKER_HUB_USERNAME` | Image name prefix for all three builds (default `apachehuditrino`) |
+| `HUDI_VERSION` / `HUDI_VERSION_TAG` | Hudi version for Spark image tags and bundle file name |
+| `SPARK_VERSION` | Spark version (must match the Hudi bundle naming) |
+| `HIVE_VERSION` / `HIVE_VERSION_TAG` | Hive image version and tags |
+| `TRINO_VERSION` / `TRINO_VERSION_TAG` | Trino distribution version and image tags |
+| `TRINO_JAVA_VERSION` | Base JDK tag for Trino image (`eclipse-temurin:<ver>-jdk-jammy`) |
+| `JAVA_VERSION`, `SCALA_VERSION`, `HADOOP_VERSION`, `AWS_SDK_VERSION` | Spark image build args |
 
 Example:
 
-```bash
-docker run --rm -p 8080:8080 -p 9091:9091 custom-trino-hudi:481-SNAPSHOT
+```sh
+export DOCKER_HUB_USERNAME=myrepo
+export TRINO_VERSION=449
+export HUDI_VERSION=0.14.2-SNAPSHOT
+./build.sh
 ```
 
-Tune memory and JVM flags in `conf/trino/catalog/jvm.config` before rebuilding. The file `conf/trino/catalog/config.yaml` is the JMX Prometheus Java agent configuration referenced from `jvm.config`.
+Manual builds (same context and Dockerfiles as `build.sh`):
 
-## Customizing catalogs
+```sh
+docker build -f dockerfiles/Dockerfile.spark -t myrepo/spark-hudi:latest .
+docker build --platform linux/amd64 -f dockerfiles/Dockerfile.hive -t myrepo/hive:latest .
+docker build -f dockerfiles/Dockerfile.trino --build-arg TRINO_VERSION=449 --build-arg JAVA_VERSION=22 -t myrepo/trino:latest .
+```
 
-Edit the `*.properties` files under `conf/trino/catalog/` (and subpaths copied to `etc/catalog/` in the image), then rebuild. For secrets and environment-specific values, prefer mounting overrides at runtime or extending the launch script instead of baking credentials into the image.
+## Run the stack
+
+Ensure `DOCKER_HUB_USERNAME` matches the prefix you used when building (Compose reads it from the environment):
+
+```sh
+export DOCKER_HUB_USERNAME=apachehuditrino   # or your custom prefix
+./run_spark_trino_hudi.sh start
+```
+
+Other commands:
+
+```sh
+./run_spark_trino_hudi.sh stop
+./run_spark_trino_hudi.sh restart   # down then up -d --build
+```
+
+Compose references pre-built image names only (no `build:` blocks). Re-run `./build.sh` when you change files under `dockerfiles/` or `jars/` contents; `restart` mainly recreates containers from the current local tags.
+
+## Service URLs and ports
+
+| Service | URL / endpoint | Notes |
+|---------|----------------|--------|
+| Jupyter | http://localhost:8888 | Token/password disabled in `entrypoint.sh` (local dev only) |
+| Spark UI (driver) | http://localhost:14040 | Host port mapped to container `4040` |
+| Spark Master UI | http://localhost:8080 | |
+| Spark Worker UI | http://localhost:8081 | |
+| Spark History Server | http://localhost:18080 | |
+| MinIO S3 API | http://localhost:9000 | Keys in Compose: `admin` / `password` |
+| MinIO Console | http://localhost:9001 | Same credentials |
+| Hive Metastore | `thrift://localhost:9083` | |
+| Trino Web UI / JDBC | http://localhost:8085 | Mapped to container `8080` |
+
+Inside the Docker network, Spark/Trino use `http://minio:9000`, `thrift://hive-metastore:9083`, and the `warehouse.minio` alias for virtual-host style paths where configured.
+
+## Configuration notes
+
+- **Spark / Hudi**: `conf/spark/` is copied into `$SPARK_HOME/conf/` in the Spark image.
+- **Hive**: `conf/hive/metastore-site.xml` is copied into the Hive image; Metastore uses Derby by default (fine for demos; use MySQL/Postgres for production-like setups).
+- **Trino**: Catalogs under `conf/trino/catalog/` are baked in. `jvm.config` references the JMX Prometheus agent and `config.yaml`. Adjust memory and ports there if needed, then rebuild.
+
+## Example notebook
+
+- `notebooks/hudi_trino_example.ipynb` — walkthrough aligned with this stack.
+- `notebooks/utils.py` — shared helpers.
+
+## Cleanup
+
+```sh
+./run_spark_trino_hudi.sh stop
+docker compose down -v   # or docker-compose down -v
+```
+
+`-v` removes named volumes if you add any later; local bind mounts under `./data/` remain on disk unless you delete them manually.
+
+## References
+
+- [Apache Hudi](https://hudi.apache.org/)
+- [Spark quick start (Hudi)](https://hudi.apache.org/docs/quick-start-guide/)
+- [Trino](https://trino.io/)
+
+## Contributing
+
+See the [Hudi contribution guide](https://hudi.apache.org/contribute/how-to-contribute) and [developer setup](https://hudi.apache.org/contribute/developer-setup) for upstream Hudi contributions.

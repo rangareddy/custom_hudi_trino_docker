@@ -14,7 +14,7 @@
 #  See the License for the specific language governing permissions and
 # limitations under the License.
 
-ARG JAVA_VERSION
+ARG JAVA_VERSION=${JAVA_VERSION:-22}
 FROM eclipse-temurin:${JAVA_VERSION}-jdk-jammy
 
 RUN apt-get update && apt-get install -y less curl python3 nano wget awscli --no-install-recommends \
@@ -32,14 +32,14 @@ RUN if [ -z "${TRINO_VERSION}" ]; then \
 ENV TRINO_VERSION=${TRINO_VERSION} \
     TRINO_HOME=/opt/trino-server
 
-COPY jars/trino-server-${TRINO_VERSION}.tar /opt/trino-server-${TRINO_VERSION}.tar
+COPY jars/trino/trino-server-${TRINO_VERSION}.tar /opt/trino-server-${TRINO_VERSION}.tar
 RUN tar -xf /opt/trino-server-${TRINO_VERSION}.tar -C /opt/ \
 	&& ln -s /opt/trino-server-${TRINO_VERSION} ${TRINO_HOME} \
 	&& rm /opt/trino-server-${TRINO_VERSION}.tar \
 	&& mkdir -p $TRINO_HOME/etc \
 	&& mkdir -p $TRINO_HOME/etc/catalog
 
-COPY jars/trino-cli-${TRINO_VERSION}-executable.jar /opt/
+COPY jars/trino/trino-cli-${TRINO_VERSION}-executable.jar /opt/
 RUN mv /opt/trino-cli-${TRINO_VERSION}-executable.jar trino-cli \
 	&& chmod +x trino-cli
 
@@ -60,7 +60,7 @@ COPY conf/trino/catalog/mysql.properties /opt/trino-server/etc/catalog/mysql.pro
 RUN rm -f /opt/trino-server/plugin/hudi/hudi-*.jar || true
 RUN rm -f /opt/trino-server/plugin/hive/hudi-*.jar || true
 
-COPY jars/ /tmp/jars-copy/
+COPY jars/trino/ /tmp/jars-copy/
 RUN mkdir -p /tmp/hudi-bundle-dir && \
     if ls /tmp/jars-copy/hudi-trino-bundle-*.jar 1> /dev/null 2>&1; then \
         cp /tmp/jars-copy/hudi-trino-bundle-*.jar /tmp/hudi-bundle-dir/ && \
