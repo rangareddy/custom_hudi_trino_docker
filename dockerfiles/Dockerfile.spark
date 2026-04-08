@@ -33,8 +33,7 @@ RUN mkdir -p ${HUDI_HOME}/${HUDI_VERSION} $NOTEBOOK_HOME && \
     wget -O $SPARK_HOME/jars/aws-java-sdk-bundle.jar \
         $MVN_REPO_URL/com/amazonaws/aws-java-sdk-bundle/$AWS_SDK_VERSION/aws-java-sdk-bundle-$AWS_SDK_VERSION.jar
 
-COPY jars/hudi/hudi-spark${SPARK_MINOR_VERSION}-bundle_$SCALA_VERSION-$HUDI_VERSION.jar \
-    ${HUDI_HOME}/${HUDI_VERSION}/hudi-spark${SPARK_MINOR_VERSION}-bundle_$SCALA_VERSION-$HUDI_VERSION.jar
+COPY jars/hudi/ ${HUDI_HOME}/${HUDI_VERSION}/
 
 COPY requirements.txt /tmp/requirements.txt
 
