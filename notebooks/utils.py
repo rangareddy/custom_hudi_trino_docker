@@ -81,7 +81,7 @@ def get_spark_session(
     spark_version = os.getenv("SPARK_VERSION", "3.5.7")
     spark_minor_version = ".".join(spark_version.split(".")[:2])
     scala_version = os.getenv("SCALA_VERSION", "2.12")
-    if hudi_version is None or hudi_version == "":
+    if hudi_version is None or hudi_version == "" or hudi_version == os.getenv("HUDI_VERSION"):
         hudi_version = os.getenv("HUDI_VERSION")
         print(f"Using the Default Hudi version: {hudi_version}")
     else:
